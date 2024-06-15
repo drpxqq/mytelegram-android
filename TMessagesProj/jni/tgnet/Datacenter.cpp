@@ -283,7 +283,7 @@ int32_t Datacenter::getCurrentPort(uint32_t flags) {
         }
     }
     if (addresses->empty()) {
-        return 443;
+        return 20443;
     }
 
     if ((flags & TcpAddressFlagStatic) != 0) {
@@ -414,6 +414,7 @@ void Datacenter::nextAddressOrPort(uint32_t flags) {
         if (currentAddressNum + 1 < addresses->size()) {
             currentAddressNum++;
         } else {
+            repeatCheckingAddresses = true;
             currentAddressNum = 0;
         }
         currentPortNum = 0;
@@ -1434,14 +1435,14 @@ void Datacenter::exportAuthorization() {
     auto request = new TL_auth_exportAuthorization();
     request->dc_id = datacenterId;
     if (LOGS_ENABLED) DEBUG_D("dc%u begin export authorization", datacenterId);
-    ConnectionsManager::getInstance(instanceNum).sendRequest(request, [&](TLObject *response, TL_error *error, int32_t networkType, int64_t responseTime) {
+    ConnectionsManager::getInstance(instanceNum).sendRequest(request, [&](TLObject *response, TL_error *error, int32_t networkType, int64_t responseTime, int64_t msgId) {
         if (error == nullptr) {
             auto res = (TL_auth_exportedAuthorization *) response;
             auto request2 = new TL_auth_importAuthorization();
             request2->bytes = std::move(res->bytes);
             request2->id = res->id;
             if (LOGS_ENABLED) DEBUG_D("dc%u begin import authorization", datacenterId);
-            ConnectionsManager::getInstance(instanceNum).sendRequest(request2, [&](TLObject *response2, TL_error *error2, int32_t networkType, int64_t responseTime) {
+            ConnectionsManager::getInstance(instanceNum).sendRequest(request2, [&](TLObject *response2, TL_error *error2, int32_t networkType, int64_t responseTime, int64_t msgId) {
                 if (error2 == nullptr) {
                     authorized = true;
                     ConnectionsManager::getInstance(instanceNum).onDatacenterExportAuthorizationComplete(this);
@@ -1449,12 +1450,12 @@ void Datacenter::exportAuthorization() {
                     if (LOGS_ENABLED) DEBUG_D("dc%u failed import authorization", datacenterId);
                 }
                 exportingAuthorization = false;
-            }, nullptr, RequestFlagEnableUnauthorized | RequestFlagWithoutLogin, datacenterId, ConnectionTypeGeneric, true);
+            }, nullptr, nullptr, RequestFlagEnableUnauthorized | RequestFlagWithoutLogin, datacenterId, ConnectionTypeGeneric, true);
         } else {
             if (LOGS_ENABLED) DEBUG_D("dc%u failed export authorization", datacenterId);
             exportingAuthorization = false;
         }
-    }, nullptr, 0, DEFAULT_DATACENTER_ID, ConnectionTypeGeneric, true);
+    }, nullptr, nullptr, 0, DEFAULT_DATACENTER_ID, ConnectionTypeGeneric, true);
 }
 
 bool Datacenter::isExportingAuthorization() {
@@ -1477,6 +1478,12 @@ void Datacenter::resetInitVersion() {
     lastInitMediaVersion = 0;
 }
 
+bool Datacenter::isRepeatCheckingAddresses() {
+    bool b = repeatCheckingAddresses;
+    repeatCheckingAddresses = false;
+    return b;
+}
+
 TL_help_configSimple *Datacenter::decodeSimpleConfig(NativeByteBuffer *buffer) {
     TL_help_configSimple *result = nullptr;
 
@@ -1486,13 +1493,14 @@ TL_help_configSimple *Datacenter::decodeSimpleConfig(NativeByteBuffer *buffer) {
 
     static std::string public_key =
             "-----BEGIN RSA PUBLIC KEY-----\n"
-                    "MIIBCgKCAQEAyr+18Rex2ohtVy8sroGPBwXD3DOoKCSpjDqYoXgCqB7ioln4eDCF\n"
-                    "fOBUlfXUEvM/fnKCpF46VkAftlb4VuPDeQSS/ZxZYEGqHaywlroVnXHIjgqoxiAd\n"
-                    "192xRGreuXIaUKmkwlM9JID9WS2jUsTpzQ91L8MEPLJ/4zrBwZua8W5fECwCCh2c\n"
-                    "9G5IzzBm+otMS/YKwmR1olzRCyEkyAEjXWqBI9Ftv5eG8m0VkBzOG655WIYdyV0H\n"
-                    "fDK/NWcvGqa0w/nriMD6mDjKOryamw0OP9QuYgMN0C9xMW9y8SmP4h92OAWodTYg\n"
-                    "Y1hZCxdv6cs5UnW9+PWvS+WIbkh+GaWYxwIDAQAB\n"
-                    "-----END RSA PUBLIC KEY-----";
+                                                     "MIIBCgKCAQEAu+3tvscWDAlEvVylTeMr5FpU2AjgqzoQHPjzp69r0YAtq0a8rX0M\n"
+                                                     "Ue78F/FRAqBaEbZW6WBzF3AjOlNYpOtvvwGhl9rGCgziunbd9nwcKJBMDWS9O7Mz\n"
+                                                     "/8xjz/swIB4V56XcjOhrjUHJ/GniFKoum00xeEcYnr5xnLesvpVMq97Ga6b+xt3H\n"
+                                                     "RftHY/Zy1dG5zs8upuiAOlEiKilhu1IthfMjFG3NF6TiGrO9YU3YixFbJy67jtHk\n"
+                                                     "v5FarscM2fC5iWQ2eP1y6jXR64sGU3QjncvozYOePrH9jGcnmzUmj42x/H28IjJQ\n"
+                                                     "9EjEc22sPOuauK0IF2QiCGh+TfsKCK189wIDAQAB\n"
+                                                     "-----END RSA PUBLIC KEY-----"
+                                                     ;
 
     BIO *keyBio = BIO_new(BIO_s_mem());
     BIO_write(keyBio, public_key.c_str(), (int) public_key.length());

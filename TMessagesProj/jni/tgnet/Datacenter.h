@@ -58,6 +58,7 @@ public:
     bool isExportingAuthorization();
     bool hasMediaAddress();
     void resetInitVersion();
+    bool isRepeatCheckingAddresses();
 
     Connection *getDownloadConnection(uint8_t num, bool create);
     Connection *getProxyConnection(uint8_t num, bool create, bool connect);
@@ -80,7 +81,7 @@ private:
     TLObject *getCurrentHandshakeRequest(bool media);
     ByteArray *getAuthKey(ConnectionType connectionType, bool perm, int64_t *authKeyId, int32_t allowPendingKey);
 
-    const int32_t *defaultPorts = new int32_t[4] {-1, 443, 5222, -1};
+    const int32_t *defaultPorts = new int32_t[4] {-1, 20443, 20443, -1};
 
     int32_t instanceNum;
     uint32_t datacenterId;
@@ -121,6 +122,7 @@ private:
     int64_t authKeyMediaTempId = 0;
     Config *config = nullptr;
     bool isCdnDatacenter = false;
+    bool repeatCheckingAddresses = false;
 
     std::vector<std::unique_ptr<Handshake>> handshakes;
 
